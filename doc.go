@@ -18,13 +18,18 @@
 //
 // This covers the measured-boot milestones: the starter set (Startup,
 // Shutdown, SelfTest, GetRandom, GetCapability, PCR_Read, PCR_Extend); the
-// attestation flow (CreatePrimary, Quote, VerifyQuote); and the PCR-sealing
+// attestation flow (CreatePrimary, Quote, VerifyQuote); the PCR-sealing
 // payoff (CreateStoragePrimary, Create, Load, StartAuthSession, PolicyPCR,
 // PolicyGetDigest, Unseal, plus the offline PolicyPCRDigest computation and
-// the SealToPCR/UnsealWithPCR helpers — see seal.go). Each method cites the
-// relevant clause of TCG "TPM 2.0 Part 3: Commands" (with structure shapes
-// from "Part 2: Structures" and the policy digest / authorization rules from
-// "Part 1: Architecture").
+// the SealToPCR/UnsealWithPCR helpers — see seal.go); NV storage
+// (NVDefineSpace, NVWrite, NVRead, NVReadPublic, NVUndefineSpace — see nv.go);
+// typed GetCapability decoders (GetPCRBanks, GetTPMProperties,
+// GetManufacturer, GetAlgorithms, GetHandles — see capability.go); and the
+// Endorsement Key (CreateEK, the EK Credential Profile ECC-P256 L-2 template —
+// see ek.go). Each method cites the relevant clause of TCG "TPM 2.0 Part 3:
+// Commands" (with structure shapes from "Part 2: Structures", the policy
+// digest / authorization rules from "Part 1: Architecture", and the EK
+// template from the TCG "EK Credential Profile for TPM Family 2.0").
 //
 // Conventions: pure Go, CGO_ENABLED=0, no architecture-specific assembly,
 // BSD-3-Clause on every file, 100% statement coverage, and GOWORK=off (the
