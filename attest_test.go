@@ -150,6 +150,76 @@ func TestCreatePrimaryResponseParse(t *testing.T) {
 	}
 }
 
+// --- CreatePrimaryPublic: returns the AK's TPMT_PUBLIC bytes ---
+
+func TestCreatePrimaryPublicParse(t *testing.T) {
+	x := bytes.Repeat([]byte{0x33}, 32)
+	y := bytes.Repeat([]byte{0x44}, 32)
+	ft := &fakeTransport{rsp: sessResp(cannedCreatePrimaryResponse(0x80000005, x, y))}
+	tpm := New(ft)
+	h, outPub, err := tpm.CreatePrimaryPublic()
+	if err != nil {
+		t.Fatalf("CreatePrimaryPublic: %v", err)
+	}
+	if h != 0x80000005 {
+		t.Fatalf("handle = %#x", h)
+	}
+	// The returned bytes are a TPMT_PUBLIC whose unique point is (x, y), and
+	// ObjectName over them is well-formed (nameAlg SHA256 prefix).
+	pt, perr := parseTPMTPublicECCPoint(outPub)
+	if perr != nil {
+		t.Fatalf("parse outPublic: %v", perr)
+	}
+	if !bytes.Equal(pt.X, x) || !bytes.Equal(pt.Y, y) {
+		t.Fatalf("outPublic point = (%x,%x)", pt.X, pt.Y)
+	}
+	name, nerr := ObjectName(outPub)
+	if nerr != nil || len(name) != 34 {
+		t.Fatalf("ObjectName(outPublic) = %x err=%v", name, nerr)
+	}
+	// The request bytes match CreatePrimary's (same template).
+	if ft.gotCmd[0] != 0x80 || ft.gotCmd[1] != 0x02 {
+		t.Fatalf("not a TagSessions command")
+	}
+}
+
+func TestCreatePrimaryPublicTransportError(t *testing.T) {
+	ft := &fakeTransport{err: errors.New("down")}
+	tpm := New(ft)
+	if _, _, err := tpm.CreatePrimaryPublic(); err == nil {
+		t.Fatalf("expected transport error")
+	}
+}
+
+func TestCreatePrimaryPublicShortHandle(t *testing.T) {
+	ft := &fakeTransport{rsp: sessResp([]byte{0x00, 0x00})} // < 4 bytes for handle
+	tpm := New(ft)
+	if _, _, err := tpm.CreatePrimaryPublic(); err != common.ErrShortBuffer {
+		t.Fatalf("err = %v, want ErrShortBuffer", err)
+	}
+}
+
+func TestCreatePrimaryPublicShortParamSize(t *testing.T) {
+	ft := &fakeTransport{rsp: sessResp([]byte{0x80, 0x00, 0x00, 0x05, 0x00, 0x00})} // handle ok, paramSize short
+	tpm := New(ft)
+	if _, _, err := tpm.CreatePrimaryPublic(); err != common.ErrShortBuffer {
+		t.Fatalf("err = %v, want ErrShortBuffer", err)
+	}
+}
+
+func TestCreatePrimaryPublicShortOutPublic(t *testing.T) {
+	// handle (4) + paramSize (4) present, but the TPM2B_PUBLIC is truncated.
+	ft := &fakeTransport{rsp: sessResp([]byte{
+		0x80, 0x00, 0x00, 0x05, // handle
+		0x00, 0x00, 0x00, 0x00, // paramSize
+		0x00, 0x10, 0x01, // TPM2B_PUBLIC size 0x10 but no payload
+	})}
+	tpm := New(ft)
+	if _, _, err := tpm.CreatePrimaryPublic(); err == nil {
+		t.Fatalf("expected short-buffer error on outPublic")
+	}
+}
+
 // --- Quote request byte-for-byte assertion ---
 
 func TestQuoteRequestBytes(t *testing.T) {

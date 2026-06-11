@@ -24,9 +24,17 @@
 // the SealToPCR/UnsealWithPCR helpers — see seal.go); NV storage
 // (NVDefineSpace, NVWrite, NVRead, NVReadPublic, NVUndefineSpace — see nv.go);
 // typed GetCapability decoders (GetPCRBanks, GetTPMProperties,
-// GetManufacturer, GetAlgorithms, GetHandles — see capability.go); and the
+// GetManufacturer, GetAlgorithms, GetHandles — see capability.go); the
 // Endorsement Key (CreateEK, the EK Credential Profile ECC-P256 L-2 template —
-// see ek.go). Each method cites the relevant clause of TCG "TPM 2.0 Part 3:
+// see ek.go); and Credential Protection / credential activation — the
+// identity step of remote attestation that binds an Attestation Key to a
+// TPM's Endorsement Key. That last flow is the off-TPM verifier side
+// MakeCredential (ECDH + KDFe + KDFa + AES-CFB + HMAC, see makecred.go and the
+// KDFa/KDFe helpers in kdf.go), the object Name it commits to (ObjectName, see
+// name.go), and the attesting side TPM2_ActivateCredential with its
+// dual-session authorization plus TPM2_PolicySecret to satisfy the EK policy,
+// tied together by ActivateAKWithEK (see activate.go). Each method cites the
+// relevant clause of TCG "TPM 2.0 Part 3:
 // Commands" (with structure shapes from "Part 2: Structures", the policy
 // digest / authorization rules from "Part 1: Architecture", and the EK
 // template from the TCG "EK Credential Profile for TPM Family 2.0").

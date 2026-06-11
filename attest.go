@@ -75,6 +75,47 @@ func (tpm *TPM) CreatePrimary() (akHandle uint32, pub AKPublic, err error) {
 	return parseCreatePrimaryResponse(rp)
 }
 
+// CreatePrimaryPublic is CreatePrimary but also returns the AK's TPMT_PUBLIC
+// bytes (the CONTENTS of the response TPM2B_PUBLIC, without the 2-byte size
+// prefix). Those bytes are exactly what the TPM loaded, so ObjectName over
+// them yields the AK's Name — the value MakeCredential must commit to. The
+// credential-activation flow needs the Name, which cannot be reconstructed
+// reliably from the template alone, so it is taken from the TPM's own
+// outPublic here. TCG "Part 3", "TPM2_CreatePrimary" (outPublic); "Part 1",
+// "Names".
+func (tpm *TPM) CreatePrimaryPublic() (akHandle uint32, outPublic []byte, err error) {
+	body := common.PutU32(nil, uint32(common.RHOwner))
+
+	auth := marshalPasswordAuth()
+	body = common.PutU32(body, uint32(len(auth)))
+	body = append(body, auth...)
+
+	body = append(body, marshalEmptySensitiveCreate()...)
+	body = append(body, marshalECCAKPublic()...)
+	body = common.PutU16(body, 0) // outsideInfo: empty TPM2B_DATA
+	body = common.PutU32(body, 0) // creationPCR: TPML_PCR_SELECTION count 0
+
+	rp, err := tpm.execute(common.TagSessions, common.CCCreatePrimary, body)
+	if err != nil {
+		return 0, nil, err
+	}
+	handle, ok := common.GetU32(rp, 0)
+	if !ok {
+		return 0, nil, common.ErrShortBuffer
+	}
+	// parameterSize (TagSessions): skip 4 bytes.
+	if _, ok := common.GetU32(rp, 4); !ok {
+		return 0, nil, common.ErrShortBuffer
+	}
+	pubBytes, _, err := common.UnmarshalTPM2B(rp[8:]) // outPublic TPM2B_PUBLIC
+	if err != nil {
+		return 0, nil, err
+	}
+	out := make([]byte, len(pubBytes))
+	copy(out, pubBytes)
+	return handle, out, nil
+}
+
 // marshalEmptySensitiveCreate renders TPM2B_SENSITIVE_CREATE for a
 // TPM-originated key: the inner TPMS_SENSITIVE_CREATE is { userAuth: empty
 // TPM2B, data: empty TPM2B } = 0x0000 0x0000 (4 bytes), wrapped by the
