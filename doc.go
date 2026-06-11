@@ -16,10 +16,15 @@
 // All multi-byte fields are encoded big-endian, as the TPM 2.0 wire format
 // mandates (TCG "TPM 2.0 Part 1: Architecture", "Data Marshaling").
 //
-// This is the starter set required by the first measured-boot milestone:
-// Startup, Shutdown, SelfTest, GetRandom, GetCapability, PCR_Read and
-// PCR_Extend. Each method cites the relevant clause of TCG "TPM 2.0 Part 3:
-// Commands" (with structure shapes from "Part 2: Structures").
+// This covers the measured-boot milestones: the starter set (Startup,
+// Shutdown, SelfTest, GetRandom, GetCapability, PCR_Read, PCR_Extend); the
+// attestation flow (CreatePrimary, Quote, VerifyQuote); and the PCR-sealing
+// payoff (CreateStoragePrimary, Create, Load, StartAuthSession, PolicyPCR,
+// PolicyGetDigest, Unseal, plus the offline PolicyPCRDigest computation and
+// the SealToPCR/UnsealWithPCR helpers — see seal.go). Each method cites the
+// relevant clause of TCG "TPM 2.0 Part 3: Commands" (with structure shapes
+// from "Part 2: Structures" and the policy digest / authorization rules from
+// "Part 1: Architecture").
 //
 // Conventions: pure Go, CGO_ENABLED=0, no architecture-specific assembly,
 // BSD-3-Clause on every file, 100% statement coverage, and GOWORK=off (the
