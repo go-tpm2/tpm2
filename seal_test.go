@@ -60,9 +60,15 @@ func TestPolicyPCRDigestConstruction(t *testing.T) {
 // --- CreateStoragePrimary request bytes ---
 
 func TestCreateStoragePrimaryRequestBytes(t *testing.T) {
-	// Response: objectHandle || parameterSize || (rest ignored).
-	rp := []byte{0x80, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00}
-	ft := &fakeTransport{rsp: sessResp(rp)}
+	// Response: a realistic CreatePrimary reply (objectHandle, parameterSize,
+	// TPM2B_PUBLIC outPublic with an ECC point) — CreateStoragePrimary now
+	// parses the public point out of it. The request-byte assertion below is
+	// unaffected.
+	ft := &fakeTransport{rsp: sessResp(cannedCreatePrimaryResponse(
+		0x80000001,
+		bytes.Repeat([]byte{0xAA}, 32),
+		bytes.Repeat([]byte{0xBB}, 32),
+	))}
 	tpm := New(ft)
 
 	h, err := tpm.CreateStoragePrimary()
