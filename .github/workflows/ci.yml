@@ -1,6 +1,12 @@
-# go-tpm2/tpm2 CI — vet, gofmt, 100%-coverage gate, and a multi-arch
-# build matrix, on every push/PR. This is a pure-Go (CGO=0) module that is
+# go-tpm2/tpm2 CI — vet, gofmt, and a 100%-coverage gate that RUNS the test
+# suite on all SIX 64-bit arches the go-tpm2 stack targets: amd64, arm64,
+# riscv64, loong64, ppc64le and s390x. This is a pure-Go (CGO=0) module that is
 # NOT part of any workspace, so every Go invocation runs with GOWORK=off.
+#
+# amd64/arm64 run natively on GitHub runners. The other four run their test
+# binary under QEMU (tonistiigi/binfmt). s390x is BIG-ENDIAN: it exercises the
+# go-tpm2 big-endian TPM 2.0 wire codec end to end, so any endianness bug fails
+# the suite here.
 
 name: ci
 
@@ -18,8 +24,9 @@ env:
   CGO_ENABLED: 0
 
 jobs:
-  test:
-    name: vet + gofmt + 100% coverage
+  # vet + gofmt once, on native amd64. (Format/vet are arch-independent.)
+  lint:
+    name: vet + gofmt
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -43,6 +50,27 @@ jobs:
             exit 1
           fi
 
+  # Native arches: amd64 (ubuntu-latest) and arm64 (ubuntu-24.04-arm). Full
+  # suite + 100% coverage gate, run directly on the runner.
+  test:
+    name: test (${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest, arch: amd64 }
+          - { os: ubuntu-24.04-arm, arch: arm64 }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+          check-latest: true
+
+      - run: go version
+
       - name: test + coverage gate (100%)
         run: |
           go test -coverprofile=cover.out ./...
@@ -54,14 +82,24 @@ jobs:
           awk -v p="$pct" 'BEGIN { exit !(p+0 >= 100.0) }' || {
             echo "::error::coverage ${pct}% < 100.0%"; exit 1; }
 
-  build:
-    name: build (${{ matrix.goos }}/${{ matrix.goarch }})
+  # Emulated arches under QEMU. The test binary is cross-compiled on the runner
+  # (CGO=0) and executed inside a per-arch container via tonistiigi/binfmt. qemu
+  # cpu models match go-simd/go-compressions' green jobs (power9 for ppc64le,
+  # la464 for loong64, the default "qemu" for s390x — NOT z14, which is fatal
+  # under TCG). loong64 uses the loong64/debian image because Debian trixie has
+  # no official loong64 port image. s390x is BIG-ENDIAN — it validates the
+  # big-endian TPM 2.0 wire codec.
+  emulated:
+    name: test (${{ matrix.arch }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        goos: [linux]
-        goarch: [amd64, arm64, riscv64, loong64]
+        include:
+          - { arch: riscv64, image: "debian:trixie", qemu: "rv64,v=true,vlen=128" }
+          - { arch: loong64, image: "ghcr.io/loong64/debian:trixie", qemu: "la464" }
+          - { arch: ppc64le, image: "debian:trixie", qemu: "power9" }
+          - { arch: s390x,   image: "debian:trixie", qemu: "qemu" }
     steps:
       - uses: actions/checkout@v4
 
@@ -70,10 +108,21 @@ jobs:
           go-version: stable
           check-latest: true
 
-      # Prove the package compiles cleanly on every 64-bit target the
-      # go-tpm2 stack supports — no arch-specific breakage slips in.
-      - name: go build
-        env:
-          GOOS: ${{ matrix.goos }}
-          GOARCH: ${{ matrix.goarch }}
-        run: go build ./...
+      - run: go version
+
+      - run: docker run --privileged --rm tonistiigi/binfmt --install ${{ matrix.arch }}
+
+      - name: build cover test binary
+        run: GOOS=linux GOARCH=${{ matrix.arch }} go test -covermode=atomic -coverpkg=./... -c -o /tmp/cov.test ./...
+
+      - name: run under qemu and gate (100%)
+        run: |
+          docker run --rm --platform linux/${{ matrix.arch }} \
+            -e QEMU_CPU=${{ matrix.qemu }} \
+            -v /tmp:/t ${{ matrix.image }} \
+            /t/cov.test -test.v -test.coverprofile=/t/cov.out
+          go tool cover -func=/tmp/cov.out
+          pct=$(go tool cover -func=/tmp/cov.out | tail -n 1 | awk '{print $3}' | tr -d '%')
+          echo "total coverage: ${pct}%"
+          awk -v p="$pct" 'BEGIN { exit !(p+0 >= 100.0) }' || {
+            echo "::error::coverage ${pct}% < 100.0%"; exit 1; }
