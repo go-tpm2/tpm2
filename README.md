@@ -7,7 +7,7 @@
 [![Coverage](https://img.shields.io/badge/coverage-100%25-brightgreen)](#conventions)
 [![License](https://img.shields.io/badge/license-BSD--3--Clause-blue)](LICENSE)
 
-Transport-agnostic, pure-Go **TPM 2.0 command API**. **v0.5.0.**
+Transport-agnostic, pure-Go **TPM 2.0 command API**. **v0.6.0.**
 
 It sits one layer above
 [`github.com/go-tpm2/common`](https://github.com/go-tpm2/common): `common` owns
@@ -71,6 +71,26 @@ res, _ := tpm2.MakeCredential(ekPub, akName, secret, rand.Reader) // off-TPM
 recovered, err := tpm.ActivateCredential(ak, ek, session,
     res.CredentialBlob, res.Secret)                   // TPM2_ActivateCredential
 ```
+
+### Object duplication — control-plane seal (v0.6.0)
+
+```go
+_, srkPub, _ := tpm.CreateStoragePrimaryPub()          // node's ECC-P256 storage key
+
+// --- control plane: no TPM at all ---
+wrapped, _ := tpm2.WrapToPCR(srkPub, secret, sel, pcrValues, nil) // OFFLINE wrap
+// … ship wrapped.ObjectPublic / .Duplicate / .InSymSeed to the node …
+
+// --- node: TPM2_Import -> Load -> PolicyPCR -> Unseal ---
+recovered, err := tpm.ImportAndUnseal(parent, wrapped.ObjectPublic,
+    wrapped.Duplicate, wrapped.InSymSeed, sel, nonceCaller)
+```
+
+A control plane with no TPM of its own wraps a secret to a **remote** node's
+storage-key public plus a `PolicyPCR` over that node's boot PCRs (`WrapToPCR`,
+pure Go, `TPM_CC_Import` duplication-wrap shape); the node recovers it with
+`Import`/`ImportAndUnseal` — `TPM2_Import` followed by the same PCR-gated
+`Unseal` as `SealToPCR` — but only while its live PCRs still match.
 
 Other groups: **NV** (`NVDefineSpace`/`NVWrite`/`NVRead`/`NVReadPublic`/
 `NVUndefineSpace`) and typed **GetCapability** decoders (`GetPCRBanks`,
