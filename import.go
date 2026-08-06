@@ -4,7 +4,6 @@
 package tpm2
 
 import (
-	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/hmac"
 	"crypto/rand"
@@ -194,7 +193,7 @@ func WrapToPCR(srkPub ECCPublic, secret []byte, sel []PCRSelection, pcrValues []
 
 	// 4. Ephemeral P-256 key pair (the duplication "secret"): de private,
 	//    Qe = de*G public.
-	eph, err := ecdsa.GenerateKey(curve, rng)
+	eph, err := generateEphemeralKey(curve, rng)
 	if err != nil {
 		return WrapToPCRResult{}, err
 	}

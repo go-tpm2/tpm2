@@ -13,6 +13,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"errors"
+	"io"
 	"math/big"
 	"testing"
 
@@ -304,34 +305,24 @@ func TestWrapToPCRObfuscateRNGFailure(t *testing.T) {
 	}
 }
 
-// nByteReader yields n bytes (all 0xCB) across reads, then fails — enough for
-// the 32-byte obfuscation value, after which the ephemeral ecdsa.GenerateKey
-// draw fails, exercising WrapToPCR's keygen error branch (distinct from the
-// obfuscate branch above).
-type nByteReader struct{ left int }
-
-func (r *nByteReader) Read(p []byte) (int, error) {
-	if r.left <= 0 {
-		return 0, errors.New("rng exhausted")
-	}
-	n := len(p)
-	if n > r.left {
-		n = r.left
-	}
-	for i := 0; i < n; i++ {
-		p[i] = 0xCB
-	}
-	r.left -= n
-	return n, nil
-}
-
-// TestWrapToPCRKeygenRNGFailure covers the ephemeral-keygen error branch: the
-// rng satisfies the 32-byte obfuscation read, then runs dry for ecdsa keygen.
-func TestWrapToPCRKeygenRNGFailure(t *testing.T) {
+// TestWrapToPCRKeygenFailure covers the ephemeral-keygen error-propagation
+// branch. The obfuscation draw succeeds (real rng), then the keygen fails via
+// the generateEphemeralKey seam — verifying WrapToPCR propagates the keygen
+// error. As of Go 1.24 a failing rng reader no longer makes ecdsa.GenerateKey
+// return an error for P-256, so the failure cannot be provoked by exhausting
+// the reader after the obfuscation read; the seam exercises the branch instead.
+func TestWrapToPCRKeygenFailure(t *testing.T) {
 	_, srkPub := testSRK(t)
 	sel, vals := testSel()
-	if _, err := WrapToPCR(srkPub, []byte("x"), sel, vals, &nByteReader{left: 32}); err == nil {
-		t.Fatalf("expected ephemeral-keygen error after obfuscation read")
+
+	orig := generateEphemeralKey
+	generateEphemeralKey = func(elliptic.Curve, io.Reader) (*ecdsa.PrivateKey, error) {
+		return nil, errors.New("keygen failure")
+	}
+	defer func() { generateEphemeralKey = orig }()
+
+	if _, err := WrapToPCR(srkPub, []byte("x"), sel, vals, rand.Reader); err == nil {
+		t.Fatalf("expected ephemeral-keygen error to propagate")
 	}
 }
 
