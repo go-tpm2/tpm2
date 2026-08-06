@@ -13,6 +13,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"errors"
+	"io"
 	"math/big"
 	"testing"
 
@@ -202,17 +203,31 @@ func TestMakeCredentialBadEKPoint(t *testing.T) {
 	}
 }
 
-// errReader fails every read, to drive the ephemeral-keygen error branch.
+// errReader fails every read. It drives the io.ReadFull-based RNG-failure
+// branches that still surface a reader error (e.g. WrapToPCR's obfuscation
+// draw); the ecdsa.GenerateKey branch is exercised via the generateEphemeralKey
+// seam instead (see TestMakeCredentialKeygenFailure).
 type errReader struct{}
 
 func (errReader) Read([]byte) (int, error) { return 0, errors.New("rng failure") }
 
-// TestMakeCredentialRNGFailure covers the GenerateKey error branch.
-func TestMakeCredentialRNGFailure(t *testing.T) {
+// TestMakeCredentialKeygenFailure covers the ephemeral-keygen error-propagation
+// branch. As of Go 1.24 a failing rng reader no longer makes ecdsa.GenerateKey
+// return an error for P-256, so the failure is injected through the
+// generateEphemeralKey seam — verifying MakeCredential still propagates a
+// keygen error rather than masking it.
+func TestMakeCredentialKeygenFailure(t *testing.T) {
 	ekPriv, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	ekPub := EKPublic{X: leftPad(ekPriv.X.Bytes(), 32), Y: leftPad(ekPriv.Y.Bytes(), 32)}
-	if _, err := MakeCredential(ekPub, []byte{0x00, 0x0B}, []byte("x"), errReader{}); err == nil {
-		t.Fatalf("expected keygen error from failing rng")
+
+	orig := generateEphemeralKey
+	generateEphemeralKey = func(elliptic.Curve, io.Reader) (*ecdsa.PrivateKey, error) {
+		return nil, errors.New("keygen failure")
+	}
+	defer func() { generateEphemeralKey = orig }()
+
+	if _, err := MakeCredential(ekPub, []byte{0x00, 0x0B}, []byte("x"), rand.Reader); err == nil {
+		t.Fatalf("expected keygen error to propagate")
 	}
 }
 
