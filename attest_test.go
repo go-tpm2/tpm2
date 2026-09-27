@@ -342,12 +342,12 @@ func signAttest(t *testing.T, key *ecdsa.PrivateKey, attest []byte) (AKPublic, E
 		t.Fatalf("ecdsa.Sign: %v", err)
 	}
 	return AKPublic{
-			X: key.PublicKey.X.Bytes(),
-			Y: key.PublicKey.Y.Bytes(),
-		}, ECDSASignature{
-			R: r.Bytes(),
-			S: s.Bytes(),
-		}
+		X: key.PublicKey.X.Bytes(),
+		Y: key.PublicKey.Y.Bytes(),
+	}, ECDSASignature{
+		R: r.Bytes(),
+		S: s.Bytes(),
+	}
 }
 
 func TestVerifyQuoteRoundTrip(t *testing.T) {
