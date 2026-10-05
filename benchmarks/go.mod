@@ -5,7 +5,7 @@
 // 100%-coverage gate.
 module github.com/go-tpm2/tpm2/benchmarks
 
-go 1.24
+go 1.27.1
 
 require (
 	github.com/go-tpm2/common v0.1.0
