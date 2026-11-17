@@ -50,6 +50,18 @@ jobs:
             exit 1
           fi
 
+  # The NV counter response parsers take bytes from a device: fuzz them.
+  fuzz:
+    name: fuzz
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: '1.27.3'
+          check-latest: true
+      - run: go test -run '^$' -fuzz '^FuzzNVCounterResponses$' -fuzztime 30s .
+
   # Native arches: amd64 (ubuntu-latest) and arm64 (ubuntu-24.04-arm). Full
   # suite + 100% coverage gate, run directly on the runner.
   test:
@@ -71,7 +83,12 @@ jobs:
 
       - run: go version
 
+      - name: install swtpm
+        run: sudo apt-get update && sudo apt-get install -y swtpm
+
       - name: test + coverage gate (100%)
+        env:
+          TPM2_REQUIRE_SWTPM: '1'
         run: |
           go test -coverprofile=cover.out ./...
           go tool cover -func=cover.out | tee cover.txt
