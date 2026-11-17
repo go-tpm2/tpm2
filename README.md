@@ -100,7 +100,9 @@ Other groups: **NV** (`NVDefineSpace`/`NVWrite`/`NVRead`/`NVReadPublic`/
 `NVReadCounter`, `NVDefineSpaceAuth`, `NVUndefineSpaceAuth`, `NVReadAuth`): a
 `TPM_NT_COUNTER` index (TCG Part 3 rev 1.83, clauses 31.3 and 31.8) read and
 incremented under its own authValue. `CounterAttributes` sets
-`COUNTER|AUTHWRITE|AUTHREAD` and deliberately not `ORDERLY` (the counter would
+`COUNTER|AUTHWRITE|AUTHREAD|NO_DA` (a wrong authValue does not count towards
+the TPM's dictionary-attack lockout; v0.9.0 counters lack NO_DA, and
+`IsCounterAttributes` accepts both forms) and deliberately not `ORDERLY` (the counter would
 jump by `MAX_ORDERLY_COUNT` after a non-orderly shutdown) and not
 `POLICY_DELETE` (it needs Platform Authorization to define, so the owner can
 delete the index: a denial of service, never a way to lower the count, because

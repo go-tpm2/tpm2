@@ -30,9 +30,22 @@ const (
 	// a counter: incremented) at least once.
 	NVWritten uint32 = 1 << 29
 
+	// NVNoDA (bit 25): authorization failures of the index do not affect the
+	// dictionary-attack logic, and the index stays usable while the TPM is in
+	// lockout (Part 2 rev 1.83, Table 225, p. 165, opened).
+	NVNoDA uint32 = 1 << 25
+
+	// LegacyCounterAttributes is what v0.9.0's NVDefineCounter set: the same as
+	// CounterAttributes without NO_DA. Counters defined by v0.9.0 carry it, and
+	// their Name (which covers the attributes) is different.
+	LegacyCounterAttributes = NVTypeCounter | NVAuthWrite | NVAuthRead
+
 	// CounterAttributes is the TPMA_NV of a rollback counter: a TPM_NT_COUNTER
 	// index, incremented and read under its own authValue (AUTHWRITE,
-	// AUTHREAD). Deliberately NOT set:
+	// AUTHREAD), with NO_DA: a wrong authValue (a wrong file) must not count
+	// towards the TPM's lockout, which would block the TPM's other users, and
+	// the authValue is a secret from a file, not something to guess. Deliberately
+	// NOT set:
 	//
 	//   - ORDERLY: after a non-orderly shutdown the TPM advances such a counter
 	//     by MAX_ORDERLY_COUNT (clause 31.8.1, note 2);
@@ -44,8 +57,16 @@ const (
 	//     rollback: a redefined counter starts above every earlier count on
 	//     the TPM (Part 3 p. 376), so a bound value recorded earlier never
 	//     matches it again.
-	CounterAttributes = NVTypeCounter | NVAuthWrite | NVAuthRead
+	CounterAttributes = LegacyCounterAttributes | NVNoDA
 )
+
+// IsCounterAttributes reports whether attrs (TPMA_NV, WRITTEN ignored) is a
+// counter this package defines: CounterAttributes, or the v0.9.0 form
+// LegacyCounterAttributes.
+func IsCounterAttributes(attrs uint32) bool {
+	a := attrs &^ NVWritten
+	return a == CounterAttributes || a == LegacyCounterAttributes
+}
 
 // CounterSize is the data size of a TPM_NT_COUNTER index: a UINT64 (clause
 // 31.3.1: dataSize shall be eight).
