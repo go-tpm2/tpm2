@@ -96,6 +96,18 @@ Other groups: **NV** (`NVDefineSpace`/`NVWrite`/`NVRead`/`NVReadPublic`/
 `NVUndefineSpace`) and typed **GetCapability** decoders (`GetPCRBanks`,
 `GetTPMProperties`, `GetManufacturer`, `GetAlgorithms`, `GetHandles`).
 
+**NV counters** (`NVDefineCounter`, `NVIncrement`/`NVIncrementAuth`,
+`NVReadCounter`, `NVDefineSpaceAuth`, `NVUndefineSpaceAuth`, `NVReadAuth`): a
+`TPM_NT_COUNTER` index (TCG Part 3 rev 1.83, clauses 31.3 and 31.8) read and
+incremented under its own authValue. `CounterAttributes` sets
+`COUNTER|AUTHWRITE|AUTHREAD` and deliberately not `ORDERLY` (the counter would
+jump by `MAX_ORDERLY_COUNT` after a non-orderly shutdown) and not
+`POLICY_DELETE` (it needs Platform Authorization to define, so the owner can
+delete the index: a denial of service, never a way to lower the count, because
+a redefined counter starts above every earlier count). The software-TPM test
+(`swtpm`) runs in CI; set `TPM2_REQUIRE_SWTPM=1` to make a missing `swtpm` a
+failure instead of a skip.
+
 Each method marshals its parameters with `common.BuildCommand` (the right
 `TPM_ST` tag + `TPM_CC`), calls `Transport.Send`, parses with
 `common.ParseResponse`, checks the response code, and unmarshals the response
