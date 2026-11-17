@@ -116,7 +116,7 @@ func rcOf(err error) uint32 {
 
 func TestSwtpmCounter(t *testing.T) {
 	tpm := startSwtpm(t)
-	const idx, idx2 uint32 = 0x01500010, 0x01500011
+	const idx, legacy uint32 = 0x01500010, 0x01500012
 	auth := []byte("index-secret")
 
 	// A wrong owner password is refused (the owner auth of swtpm is empty).
@@ -134,7 +134,7 @@ func TestSwtpmCounter(t *testing.T) {
 	if string(name) != string(name2) || len(name) != 34 || name[0] != 0 || name[1] != 0x0B {
 		t.Fatalf("name %x vs %x", name, name2)
 	}
-	if pub.Attributes&^NVWritten != CounterAttributes || pub.DataSize != 8 || len(pub.AuthPolicy) != 0 {
+	if pub.Attributes&^NVWritten != CounterAttributes || !IsCounterAttributes(pub.Attributes) || pub.DataSize != 8 || len(pub.AuthPolicy) != 0 {
 		t.Fatalf("public area %+v", pub)
 	}
 
@@ -172,18 +172,17 @@ func TestSwtpmCounter(t *testing.T) {
 	if err := tpm.NVWrite(idx, make([]byte, 8), 0); err == nil {
 		t.Fatal("NV_Write on a counter")
 	}
-	// A second, live counter is independent of the first.
-	if _, err := tpm.NVDefineCounter(nil, nil, idx2); err != nil {
-		t.Fatal(err)
+	// NO_DA: many wrong authValues do not lock the counter (nor the TPM's
+	// dictionary-attack counter, which swtpm sets low by default).
+	for i := 0; i < 40; i++ {
+		if err := tpm.NVIncrementAuth(idx, []byte("wrong"), idx); err == nil {
+			t.Fatal("increment with a wrong authValue")
+		}
 	}
-	if err := tpm.NVIncrementAuth(idx2, nil, idx2); err != nil {
-		t.Fatal(err)
+	if err := tpm.NVIncrementAuth(idx, auth, idx); err != nil {
+		t.Fatalf("after 40 failures: %v", err)
 	}
-	c2, err := tpm.NVReadCounter(nil, idx2)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Logf("first counter: first value %d, then %d; second counter: first value %d", c0, c0+3, c2)
+	c0++ // that increment moved it; the redefinition check below is a floor
 	// Deleting and redefining the counter cannot lower it: the same Name
 	// (same type, attributes, policy), a value above the bound recorded.
 	if err := tpm.NVUndefineSpaceAuth([]byte("not the owner"), idx); err == nil {
@@ -201,5 +200,26 @@ func TestSwtpmCounter(t *testing.T) {
 	}
 	if c, err := tpm.NVReadCounter(auth, idx); err != nil || c <= c0+3 {
 		t.Fatalf("redefined counter %d (%v), want above %d", c, err, c0+3)
+	}
+
+	// A v0.9.0 counter (no NO_DA) still works, and is recognized.
+	err = tpm.NVDefineSpaceAuth(nil, auth, NVPublic{Index: legacy, NameAlg: algSHA256,
+		Attributes: LegacyCounterAttributes, DataSize: CounterSize})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := tpm.NVIncrementAuth(legacy, auth, legacy); err != nil {
+		t.Fatal(err)
+	}
+	if lp, _, err := tpm.NVReadPublic(legacy); err != nil || !IsCounterAttributes(lp.Attributes) || lp.Attributes&NVNoDA != 0 {
+		t.Fatalf("legacy public area %+v (%v)", lp, err)
+	}
+	// The control for the NO_DA loop above: without NO_DA the same failures
+	// lock the index out (TPM_RC_LOCKOUT, 0x921), so that loop proves something.
+	for i := 0; i < 40; i++ {
+		_ = tpm.NVIncrementAuth(legacy, []byte("wrong"), legacy)
+	}
+	if err := tpm.NVIncrementAuth(legacy, auth, legacy); rcOf(err) != 0x921 {
+		t.Fatalf("a counter without NO_DA after 40 failures: %v, want TPM_RC_LOCKOUT", err)
 	}
 }

@@ -80,7 +80,7 @@ func TestNVDefineSpaceAuthRequestBytes(t *testing.T) {
 		[]byte{0x00, 0x0E},           // TPM2B_NV_PUBLIC size: 4+2+4+2+2 = 14
 		[]byte{0x01, 0x50, 0x00, 0x00},
 		[]byte{0x00, 0x0B},
-		[]byte{0x00, 0x04, 0x00, 0x14}, // COUNTER 0x10 | AUTHWRITE 0x4 | AUTHREAD 0x40000
+		[]byte{0x02, 0x04, 0x00, 0x14}, // COUNTER 0x10 | AUTHWRITE 0x4 | AUTHREAD 0x40000 | NO_DA 0x2000000
 		[]byte{0x00, 0x00},             // authPolicy: empty
 		[]byte{0x00, 0x08},
 	)
@@ -122,8 +122,22 @@ func TestNVUndefineSpaceAuthRequestBytes(t *testing.T) {
 }
 
 func TestCounterAttributes(t *testing.T) {
-	if CounterAttributes != 0x00040014 {
-		t.Fatalf("CounterAttributes = %#x", CounterAttributes)
+	if CounterAttributes != 0x02040014 || LegacyCounterAttributes != 0x00040014 {
+		t.Fatalf("CounterAttributes = %#x, legacy %#x", CounterAttributes, LegacyCounterAttributes)
+	}
+	for attrs, want := range map[uint32]bool{
+		CounterAttributes:                       true,
+		CounterAttributes | NVWritten:           true,
+		LegacyCounterAttributes:                 true,
+		LegacyCounterAttributes | NVWritten:     true,
+		nvOrdinaryAttributes:                    false,
+		CounterAttributes | NVOwnerWrite:        false,
+		LegacyCounterAttributes | 1<<10:         false, // POLICY_DELETE
+		(CounterAttributes &^ NVAuthRead) | 0x1: false,
+	} {
+		if got := IsCounterAttributes(attrs); got != want {
+			t.Fatalf("IsCounterAttributes(%#x) = %v", attrs, got)
+		}
 	}
 }
 
