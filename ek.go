@@ -138,9 +138,20 @@ func ekPublicArea(x, y []byte) []byte {
 // Response: objectHandle (u32) || parameterSize (u32) || TPM2B_PUBLIC outPublic
 // (from which the EK point is extracted) || trailing creation fields.
 func (tpm *TPM) CreateEK() (ekHandle uint32, pub EKPublic, err error) {
+	return tpm.CreateEKAuth(nil)
+}
+
+// CreateEKAuth is CreateEK on a TPM whose endorsement hierarchy has an
+// authValue: endorsementAuth goes in the password session's hmac field (empty
+// is CreateEK). A wrong value is TPM_RC_BAD_AUTH (0x98 + the session index):
+// the authValue of a permanent entity other than lockoutAuth is not DA
+// protected, so it does not count toward the lockout. TCG "TPM 2.0 Part 1:
+// Architecture" rev 1.59, 19.8.1 "Dictionary Attack Protection:
+// Introduction" (p. 132), and 19.8.3 Note 2 (p. 134).
+func (tpm *TPM) CreateEKAuth(endorsementAuth []byte) (ekHandle uint32, pub EKPublic, err error) {
 	body := common.PutU32(nil, RHEndorsement) // primaryHandle = endorsement
 
-	auth := marshalPasswordAuth()
+	auth := marshalAuth(endorsementAuth)
 	body = common.PutU32(body, uint32(len(auth)))
 	body = append(body, auth...)
 

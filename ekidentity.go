@@ -55,7 +55,13 @@ func EKName(pub EKPublic) ([]byte, error) {
 // THIS TPM (see the note at the top of this file for what that proves). It
 // needs an empty endorsement authValue, the default, like CreateEK.
 func (tpm *TPM) EKIdentity() ([]byte, error) {
-	h, pub, err := tpm.CreateEK()
+	return tpm.EKIdentityAuth(nil)
+}
+
+// EKIdentityAuth is EKIdentity on a TPM whose endorsement hierarchy has an
+// authValue (see CreateEKAuth).
+func (tpm *TPM) EKIdentityAuth(endorsementAuth []byte) ([]byte, error) {
+	h, pub, err := tpm.CreateEKAuth(endorsementAuth)
 	if err != nil {
 		return nil, err
 	}
