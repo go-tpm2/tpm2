@@ -70,6 +70,26 @@ func dialRetry(t *testing.T, port int) net.Conn {
 // startSwtpm launches a fresh swtpm and returns a TPM on its command channel.
 func startSwtpm(t *testing.T) *TPM {
 	t.Helper()
+	tpm, _ := startSwtpmRec(t)
+	return tpm
+}
+
+// recorder keeps the last response the TPM sent, for tests that read a field
+// the command layer does not decode.
+type recorder struct {
+	inner common.Transport
+	last  []byte
+}
+
+func (r *recorder) Send(cmd []byte) ([]byte, error) {
+	rsp, err := r.inner.Send(cmd)
+	r.last = append(r.last[:0], rsp...)
+	return rsp, err
+}
+
+// startSwtpmRec is startSwtpm that also returns the recorder.
+func startSwtpmRec(t *testing.T) (*TPM, *recorder) {
+	t.Helper()
 	bin, err := exec.LookPath("swtpm")
 	if err != nil {
 		if os.Getenv("TPM2_REQUIRE_SWTPM") != "" {
@@ -100,10 +120,11 @@ func startSwtpm(t *testing.T) *TPM {
 	}
 	conn := dialRetry(t, cmdPort)
 	t.Cleanup(func() { conn.Close() })
-	tpm := New(swtpmConn{conn})
+	rec := &recorder{inner: swtpmConn{conn}}
+	tpm := New(rec)
 	// startup-clear already started it; a second Startup is TPM_RC_INITIALIZE.
 	_ = tpm.Startup(uint16(common.SUClear))
-	return tpm
+	return tpm, rec
 }
 
 func rcOf(err error) uint32 {
