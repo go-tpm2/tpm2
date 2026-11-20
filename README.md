@@ -72,6 +72,18 @@ recovered, err := tpm.ActivateCredential(ak, ek, session,
     res.CredentialBlob, res.Secret)                   // TPM2_ActivateCredential
 ```
 
+### Name a TPM by its EK (v0.11.0)
+
+```go
+name, err := tpm.EKIdentity() // EK created transiently, Name returned, key flushed
+// name = 0x000B || SHA-256(TPMT_PUBLIC of the EK): same TPM, same name; two TPMs, two names.
+tpm.FlushContext(handle)      // TPM2_FlushContext, for any transient object or session
+```
+
+The name identifies the TPM whose endorsement seed made the key. It does not
+prove the TPM answering now is that one: whoever controls a software TPM can
+present any EK public. Proof of possession is `ActivateAKWithEK`.
+
 ### Object duplication — control-plane seal (v0.6.0)
 
 ```go

@@ -94,6 +94,13 @@ type EKPublic struct {
 // "Template L-2"; "TPM 2.0 Part 2", "TPMT_PUBLIC", "TPMS_ECC_PARMS",
 // "TPMT_SYM_DEF_OBJECT".
 func marshalEKPublic() []byte {
+	return common.MarshalTPM2B(ekPublicArea(nil, nil))
+}
+
+// ekPublicArea is the TPMT_PUBLIC of marshalEKPublic with the unique point
+// (x, y) filled in: empty for the template handed to CreatePrimary, the TPM's
+// point for the public area the TPM loaded (whose digest is the EK's Name).
+func ekPublicArea(x, y []byte) []byte {
 	var p []byte
 	p = common.PutU16(p, AlgECC)                        // type
 	p = common.PutU16(p, algSHA256)                     // nameAlg
@@ -107,10 +114,10 @@ func marshalEKPublic() []byte {
 	p = common.PutU16(p, algNull)     // scheme = NULL
 	p = common.PutU16(p, ECCNistP256) // curveID = NIST P-256
 	p = common.PutU16(p, algNull)     // kdf = NULL
-	// unique: empty ECC point.
-	p = common.PutU16(p, 0) // x: empty TPM2B
-	p = common.PutU16(p, 0) // y: empty TPM2B
-	return common.MarshalTPM2B(p)
+	// unique: the ECC point (empty in the template).
+	p = append(p, common.MarshalTPM2B(x)...) // x
+	p = append(p, common.MarshalTPM2B(y)...) // y
+	return p
 }
 
 // CreateEK runs TPM2_CreatePrimary under TPM_RH_ENDORSEMENT (empty-auth
